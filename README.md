@@ -5,7 +5,7 @@ les annonces Bluetooth [BTHome](https://bthome.io) (v2, et v1 non chiffrée) et
 les affiche en direct : une carte par appareil, déplaçable, réductible en bulle,
 avec une fiche détaillée (courbes, min/moy/max, historique reçu).
 
-Ouvrir : https://yerpj.github.io/bthome/ — ou https://yerpj.github.io/bthome/#demo
+Ouvrir : https://yerpj.github.io/bthome_quick_scanner/ — ou https://yerpj.github.io/bthome_quick_scanner/#demo
 pour une démonstration avec de faux capteurs.
 
 ## Prérequis (Chrome Android)
