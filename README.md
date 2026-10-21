@@ -5,8 +5,11 @@ les annonces Bluetooth [BTHome](https://bthome.io) (v2, et v1 non chiffrée) et
 les affiche en direct : une carte par appareil, déplaçable, réductible en bulle,
 avec une fiche détaillée (courbes, min/moy/max, historique reçu).
 
-Ouvrir : https://yerpj.github.io/bthome_quick_scanner/ — ou https://yerpj.github.io/bthome_quick_scanner/#demo
-pour une démonstration avec de faux capteurs.
+Ouvrir : https://yerpj.github.io/bthome_quick_scanner/
+
+L'écoute dure jusqu'au bouton **Arrêter** : l'écran reste allumé, et l'écoute est
+relancée automatiquement si Android l'interrompt (retour au premier plan,
+bridage des scans longs).
 
 ## Prérequis (Chrome Android)
 

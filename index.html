@@ -189,7 +189,6 @@ header {
   <button class="btn" id="bArrange" title="Ranger les appareils">
     <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6" rx="1.5"/><rect x="9" y="1" width="6" height="6" rx="1.5"/><rect x="1" y="9" width="6" height="6" rx="1.5"/><rect x="9" y="9" width="6" height="6" rx="1.5"/></svg>
   </button>
-  <button class="btn" id="bDemo">Démo</button>
   <button class="btn primary" id="bScan"><span class="dot"></span><span>Écouter</span></button>
 </header>
 
@@ -708,7 +707,7 @@ const sky = (() => {
     g.strokeStyle = "rgba(70,230,193,.06)"; g.lineWidth = 1;
     for (let r = 80; r < R; r += 90) { g.beginPath(); g.arc(cx, cy, r, 0, 7); g.stroke(); }
     // sweep
-    if (scanning || demo) {
+    if (scanning) {
       const a = (t / 2600) % (Math.PI * 2);
       const sw = g.createConicGradient ? g.createConicGradient(a - .9, cx, cy) : null;
       if (sw) {
@@ -744,7 +743,7 @@ const sky = (() => {
 /* ======================================================================
    Bluetooth scanning (Web Bluetooth Scanning API, Chrome Android)
    ====================================================================== */
-let scanning = false, scanHandle = null, wakeLock = null, demo = null, total = 0;
+let scanning = false, scanHandle = null, wakeLock = null, total = 0, scanStart = 0, restarting = false;
 const bScan = document.getElementById("bScan");
 const UUIDS = [UUID_V2, UUID_V1, UUID_V1_ENC].map(n => [n, uuid128(n)]);
 
@@ -757,26 +756,46 @@ function onAdv(ev) {
   }
 }
 
+const SCAN_OPTS = { acceptAllAdvertisements: true, keepRepeatedDevices: true };
+const RESTART_MS = 20 * 60 * 1000; // Android throttles unfiltered scans after 30 min
+
 async function startScan() {
   if (!navigator.bluetooth || !navigator.bluetooth.requestLEScan) {
     toast("Écoute Bluetooth indisponible dans ce navigateur : voir les instructions à l'écran.");
     showHint(true);
     return;
   }
+  navigator.bluetooth.removeEventListener("advertisementreceived", onAdv);
+  navigator.bluetooth.addEventListener("advertisementreceived", onAdv);
+  scanning = true; setScanUI();
+  if (await openScan()) toast("Écoute en cours : elle ne s'arrête qu'avec le bouton Arrêter.");
+  else toast("L'écoute n'a pas pu démarrer, nouvel essai automatique…");
+  keepAwake();
+}
+// (re)opens the scan; the user's "Écouter" choice stays until "Arrêter"
+async function openScan() {
+  try { scanHandle && scanHandle.active && scanHandle.stop(); } catch (e) {}
   try {
-    navigator.bluetooth.removeEventListener("advertisementreceived", onAdv);
-    navigator.bluetooth.addEventListener("advertisementreceived", onAdv);
-    scanHandle = await navigator.bluetooth.requestLEScan({ acceptAllAdvertisements: true, keepRepeatedDevices: true });
-    scanning = true; setScanUI();
-    try { wakeLock = await navigator.wakeLock?.request("screen"); } catch (e) {}
-    toast("Écoute en cours : laisse l'écran allumé.");
+    scanHandle = await navigator.bluetooth.requestLEScan(SCAN_OPTS);
+    scanStart = Date.now();
+    return true;
   } catch (e) {
-    toast("Impossible d'écouter : " + (e.message || e.name));
+    scanHandle = null;
+    console.warn("requestLEScan", e);
+    return false;
   }
 }
+async function keepAwake() {
+  if (!scanning || document.visibilityState !== "visible" || (wakeLock && !wakeLock.released)) return;
+  try {
+    wakeLock = await navigator.wakeLock?.request("screen");
+    wakeLock?.addEventListener("release", () => setTimeout(keepAwake, 500));
+  } catch (e) {}
+}
 function stopScan() {
+  scanning = false;
   try { scanHandle && scanHandle.stop(); } catch (e) {}
-  scanHandle = null; scanning = false; setScanUI();
+  scanHandle = null; setScanUI();
   try { wakeLock && wakeLock.release(); } catch (e) {} wakeLock = null;
 }
 function setScanUI() {
@@ -785,19 +804,24 @@ function setScanUI() {
   updateStat();
 }
 bScan.onclick = () => scanning ? stopScan() : startScan();
-document.addEventListener("visibilitychange", async () => {
-  if (document.visibilityState === "visible" && scanning) {
-    // Chrome stops the scan when the page is hidden: restart it
-    try { scanHandle && scanHandle.stop(); } catch (e) {}
-    try { scanHandle = await navigator.bluetooth.requestLEScan({ acceptAllAdvertisements: true, keepRepeatedDevices: true }); } catch (e) { scanning = false; setScanUI(); }
-    try { wakeLock = await navigator.wakeLock?.request("screen"); } catch (e) {}
-  }
+// watchdog: restart the scan whenever it is no longer running, and periodically
+setInterval(async () => {
+  if (!scanning || restarting || document.visibilityState !== "visible") return;
+  const dead = !scanHandle || scanHandle.active === false;
+  if (!dead && Date.now() - scanStart < RESTART_MS) return;
+  restarting = true;
+  await openScan();
+  restarting = false;
+  keepAwake();
+}, 3000);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && scanning) { scanHandle = null; keepAwake(); } // watchdog reopens it
 });
 
 function updateStat() {
   const n = devices.size;
   document.getElementById("stat").textContent =
-    (scanning ? "écoute" : demo ? "démo" : "à l'arrêt") + ` · ${n} appareil${n > 1 ? "s" : ""}` + (total ? ` · ${total} paquets` : "");
+    (scanning ? "écoute" : "à l'arrêt") + ` · ${n} appareil${n > 1 ? "s" : ""}` + (total ? ` · ${total} paquets` : "");
 }
 setInterval(() => { devices.forEach(d => d.el && renderFoot(d)); if (sheetDev) document.getElementById("shSub").textContent = `${sheetDev.count} paquet${sheetDev.count > 1 ? "s" : ""} · ${sheetDev.rssi} dBm · vu ${ago(sheetDev.seen)}`; }, 1000);
 
@@ -818,32 +842,6 @@ function toast(msg) {
 }
 document.getElementById("bArrange").onclick = arrange;
 
-/* ======================================================================
-   Demo: simulated devices emitting real BTHome v2 payloads
-   ====================================================================== */
-function le(v, n) { const a = []; v = Math.round(v); if (v < 0) v += 2 ** (8 * n); for (let i = 0; i < n; i++) { a.push(v & 255); v = Math.floor(v / 256); } return a; }
-const SIM = [
-  { id: "demo-salon", name: "Salon H&T", every: 2500, f(k, t) { return [0x40, 0x00, k & 255, 0x01, 87, 0x02, ...le((21.3 + Math.sin(t / 20000) * 1.4 + Math.random() * .1) * 100, 2), 0x03, ...le((48 + Math.sin(t / 31000) * 6) * 100, 2)]; } },
-  { id: "demo-jardin", name: "Jardin", every: 4000, f(k, t) { return [0x40, 0x00, k & 255, 0x01, 64, 0x45, ...le((12.6 + Math.sin(t / 15000) * 2.5) * 10, 2), 0x2e, 71, 0x04, ...le((1013.2 + Math.sin(t / 50000) * 3) * 100, 3), 0x05, ...le((800 + Math.sin(t / 9000) * 600) * 100, 3)]; } },
-  { id: "demo-bouton", name: "Shelly BLU Button", every: 6000, f(k) { return [0x44, 0x00, k & 255, 0x01, 100, 0x3a, [1, 2, 1, 4, 3][k % 5]]; } },
-  { id: "demo-porte", name: "Porte d'entrée", every: 5000, f(k) { return [0x44, 0x00, k & 255, 0x01, 93, 0x05, ...le(120 * 100, 3), 0x2d, k % 2, 0x3f, ...le(k % 2 ? 900 : 0, 2)]; } },
-  { id: "demo-prise", name: "Prise lave-linge", every: 1800, f(k, t) { const p = 1800 + Math.sin(t / 4000) * 600 + Math.random() * 80; return [0x40, 0x00, k & 255, 0x0b, ...le(p * 100, 3), 0x0c, ...le(230.1 * 1000 + Math.random() * 900, 2), 0x0a, ...le(1520 + t / 1e4, 3)]; } },
-  { id: "demo-co2", name: "Bureau CO₂", every: 3200, f(k, t) { return [0x40, 0x00, k & 255, 0x12, ...le(620 + Math.sin(t / 25000) * 300, 2), 0x02, ...le(22.4 * 100, 2), 0x2e, 44]; } },
-];
-function startDemo() {
-  if (demo) { demo.forEach(clearInterval); demo = null; document.getElementById("bDemo").classList.remove("on"); updateStat(); return; }
-  document.getElementById("bDemo").classList.add("on");
-  demo = [];
-  SIM.forEach((s, i) => {
-    let k = 0;
-    const fire = () => { k++; const b = new Uint8Array(s.f(k, Date.now())); total++; ingest({ id: s.id, name: s.name, rssi: -55 - Math.round(Math.random() * 30), uuid: UUID_V2, bytes: b }); };
-    setTimeout(fire, 400 + i * 900);
-    demo.push(setInterval(fire, s.every));
-  });
-  updateStat();
-}
-document.getElementById("bDemo").onclick = startDemo;
-if (location.hash === "#demo") startDemo();
 </script>
 </body>
 </html>
