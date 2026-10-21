@@ -1,0 +1,849 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#070a10">
+<title>Radar BTHome</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #070a10;
+  --bg2: #0d121c;
+  --card: rgba(18, 25, 38, .82);
+  --line: rgba(140, 170, 220, .14);
+  --fg: #e6edf7;
+  --dim: #8592a8;
+  --faint: #4b566a;
+  --accent: #46e6c1;
+  --warn: #ffb44a;
+  --bad: #ff5f7a;
+  --sans: "Space Grotesk", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--fg); font: 15px/1.4 var(--sans); }
+button { font: inherit; color: inherit; cursor: pointer; }
+
+#sky { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+header {
+  position: fixed; left: 0; right: 0; top: 0; z-index: 20;
+  padding: calc(env(safe-area-inset-top, 0px) + 10px) 14px 10px;
+  display: flex; align-items: center; gap: 8px;
+  background: linear-gradient(var(--bg) 40%, transparent);
+}
+.brand { display: flex; align-items: center; gap: 10px; margin-right: auto; min-width: 0; flex: 1; }
+.brand > div { min-width: 0; }
+.btn { flex: none; }
+.brand svg { flex: none; }
+.brand b { font-weight: 700; letter-spacing: .02em; font-size: 17px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 440px) {
+  header { gap: 6px; padding-left: 10px; padding-right: 10px; }
+  .brand b { font-size: 15px; }
+  .brand svg { width: 24px; height: 24px; }
+  .btn { padding: 7px 11px; font-size: 13px; }
+}
+.brand small { display: block; color: var(--dim); font-size: 12px; font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.btn {
+  border: 1px solid var(--line); background: rgba(20, 28, 42, .9); border-radius: 999px;
+  padding: 8px 14px; font-weight: 600; font-size: 14px; display: inline-flex; align-items: center; gap: 7px;
+  transition: background .2s, border-color .2s, transform .1s;
+}
+.btn:active { transform: scale(.96); }
+.btn.primary { background: var(--accent); color: #04221b; border-color: transparent; }
+.btn.primary.on { background: transparent; color: var(--accent); border-color: var(--accent); }
+.btn .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.btn.on .dot { animation: blink 1.2s infinite; }
+@keyframes blink { 50% { opacity: .2; } }
+
+#field { position: fixed; inset: 0; z-index: 5; touch-action: none; }
+
+/* ---------- device cards ---------- */
+.dev {
+  position: absolute; left: 0; top: 0; width: 196px; touch-action: none; user-select: none;
+  --c: var(--accent);
+  border-radius: 18px; background: var(--card); border: 1px solid var(--line);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .45), inset 0 0 0 1px rgba(255, 255, 255, .02);
+  transition: width .35s cubic-bezier(.2, .8, .2, 1), height .35s, border-radius .35s, box-shadow .3s, opacity .4s;
+  animation: born .7s cubic-bezier(.2, 1.4, .3, 1) both;
+  cursor: grab;
+}
+.dev.drag { cursor: grabbing; box-shadow: 0 18px 50px rgba(0, 0, 0, .6), 0 0 0 1px var(--c); z-index: 10; transition: none; }
+.dev.stale { opacity: .55; }
+@keyframes born { from { transform: var(--t) scale(.2); opacity: 0; filter: blur(8px); } }
+.dev::before {
+  content: ""; position: absolute; inset: -1px; border-radius: inherit; pointer-events: none;
+  box-shadow: 0 0 0 0 var(--c); opacity: 0;
+}
+.dev.ping::before { animation: ping .9s ease-out; }
+@keyframes ping { 0% { opacity: .9; box-shadow: 0 0 0 0 var(--c); } 100% { opacity: 0; box-shadow: 0 0 0 14px var(--c); } }
+.dev .top { display: flex; align-items: center; gap: 8px; padding: 11px 10px 4px 12px; }
+.dev .ic { width: 26px; height: 26px; border-radius: 9px; flex: none; display: grid; place-items: center;
+  background: color-mix(in srgb, var(--c) 18%, transparent); color: var(--c); }
+.dev .nm { font-weight: 600; font-size: 14px; min-width: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dev .mini { border: 0; background: none; padding: 4px; color: var(--dim); border-radius: 8px; line-height: 0; }
+.dev .mini:active { background: var(--line); }
+.dev .vals { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; padding: 2px 12px 4px; }
+.dev .v { min-width: 0; }
+.dev .v .n { font-family: var(--mono); font-weight: 600; font-size: 19px; letter-spacing: -.02em; transition: color .6s; white-space: nowrap; }
+.dev .v .n.flash { color: var(--c); transition: none; }
+.dev .v .n u { text-decoration: none; font-size: 11px; color: var(--dim); font-weight: 400; margin-left: 2px; }
+.dev .v .l { font-size: 10.5px; color: var(--dim); text-transform: uppercase; letter-spacing: .07em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dev .v.wide { grid-column: span 2; }
+.dev canvas.spark { display: block; width: 100%; height: 30px; }
+.dev .foot { display: flex; align-items: center; gap: 8px; padding: 2px 12px 10px; font: 11px var(--mono); color: var(--dim); }
+.dev .foot .sp { margin-left: auto; }
+.bars { display: inline-flex; align-items: flex-end; gap: 2px; height: 11px; }
+.bars i { width: 3px; background: var(--faint); border-radius: 1px; }
+.bars i.on { background: var(--c); }
+.batt { display: inline-flex; align-items: center; gap: 3px; }
+.evt {
+  position: absolute; left: 50%; top: -12px; transform: translateX(-50%); white-space: nowrap;
+  background: var(--c); color: #061016; font: 600 12px var(--sans); padding: 3px 10px; border-radius: 999px;
+  animation: evt 2.4s ease forwards; pointer-events: none;
+}
+@keyframes evt { 0% { opacity: 0; transform: translate(-50%, 8px) scale(.7); } 12% { opacity: 1; transform: translate(-50%, -6px) scale(1.08); } 20% { transform: translate(-50%, -4px) scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -14px); } }
+
+/* minified: a glowing orb with one value */
+.dev.min { width: 66px; height: 66px; border-radius: 50%; }
+.dev.min .top { padding: 0; height: 100%; justify-content: center; flex-direction: column; gap: 2px; }
+.dev.min .nm, .dev.min .vals, .dev.min .spark, .dev.min .foot, .dev.min .mini { display: none; }
+.dev .orb { display: none; font: 600 11px var(--mono); color: var(--fg); }
+.dev.min .orb { display: block; }
+.dev.min .ic { width: 24px; height: 24px; }
+
+/* ---------- empty state ---------- */
+#empty {
+  position: fixed; inset: 0; z-index: 4; display: grid; place-items: center; pointer-events: none;
+  text-align: center; padding: 0 24px;
+}
+#empty > div { max-width: 360px; margin-top: 40px; }
+#empty h1 { font-size: 22px; margin: 0 0 8px; font-weight: 600; text-wrap: balance; }
+#empty p { color: var(--dim); margin: 0 0 6px; font-size: 14px; }
+#empty code { font-family: var(--mono); font-size: 12px; color: var(--accent); word-break: break-all; }
+#empty .warn { color: var(--warn); }
+
+/* ---------- detail sheet ---------- */
+#sheet {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; max-height: 78%;
+  background: var(--bg2); border-top: 1px solid var(--line); border-radius: 22px 22px 0 0;
+  box-shadow: 0 -20px 60px rgba(0, 0, 0, .6);
+  transform: translateY(105%); transition: transform .38s cubic-bezier(.2, .9, .2, 1);
+  display: flex; flex-direction: column;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+#sheet.open { transform: none; }
+@media (min-width: 760px) {
+  #sheet { left: auto; top: 0; width: 420px; max-height: none; border-radius: 22px 0 0 22px; border-top: 0; border-left: 1px solid var(--line);
+    transform: translateX(105%); padding-top: env(safe-area-inset-top, 0px); }
+}
+.sh-head { display: flex; align-items: center; gap: 12px; padding: 14px 16px 10px; border-bottom: 1px solid var(--line); }
+.sh-head .ic { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; flex: none; }
+.sh-head h2 { margin: 0; font-size: 18px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sh-head small { color: var(--dim); font: 11.5px var(--mono); display: block; }
+.sh-head > div { min-width: 0; flex: 1; }
+.sh-close { border: 0; background: var(--line); width: 34px; height: 34px; border-radius: 50%; flex: none; display: grid; place-items: center; }
+.sh-body { overflow-y: auto; padding: 14px 16px 20px; display: grid; gap: 12px; overscroll-behavior: contain; }
+.tile { background: rgba(255, 255, 255, .025); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px 8px; }
+.tile .row { display: flex; align-items: baseline; gap: 8px; }
+.tile .l { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: .07em; flex: 1; }
+.tile .n { font: 600 22px var(--mono); }
+.tile .n u { text-decoration: none; font-size: 12px; color: var(--dim); font-weight: 400; margin-left: 3px; }
+.tile .mm { font: 11px var(--mono); color: var(--dim); display: flex; gap: 12px; margin-top: 2px; }
+.tile canvas { display: block; width: 100%; height: 64px; margin-top: 6px; }
+.sec { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: .1em; margin: 6px 0 -4px; }
+.log { font: 11.5px/1.55 var(--mono); color: var(--dim); background: rgba(0, 0, 0, .25); border-radius: 12px; padding: 8px 10px; max-height: 220px; overflow: auto; }
+.log div { white-space: nowrap; }
+.log b { color: var(--fg); font-weight: 400; }
+.log em { color: var(--c, var(--accent)); font-style: normal; }
+.meta { display: grid; grid-template-columns: auto 1fr; gap: 3px 14px; font: 12px var(--mono); }
+.meta dt { color: var(--dim); }
+.meta dd { margin: 0; word-break: break-all; }
+
+#toast {
+  position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 20px); z-index: 40;
+  transform: translate(-50%, 30px); opacity: 0; transition: .3s; max-width: calc(100% - 32px);
+  background: #1d2636; border: 1px solid var(--line); padding: 10px 16px; border-radius: 14px; font-size: 14px;
+}
+#toast.show { transform: translate(-50%, 0); opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .dev, .evt { animation: none; } }
+</style>
+</head>
+<body>
+<canvas id="sky"></canvas>
+
+<header>
+  <div class="brand">
+    <svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true">
+      <circle cx="15" cy="15" r="13" fill="none" stroke="#46e6c1" stroke-opacity=".35"/>
+      <circle cx="15" cy="15" r="8" fill="none" stroke="#46e6c1" stroke-opacity=".6"/>
+      <circle cx="15" cy="15" r="3" fill="#46e6c1"/>
+    </svg>
+    <div><b>Radar BTHome</b><small id="stat">à l'arrêt</small></div>
+  </div>
+  <button class="btn" id="bArrange" title="Ranger les appareils">
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6" rx="1.5"/><rect x="9" y="1" width="6" height="6" rx="1.5"/><rect x="1" y="9" width="6" height="6" rx="1.5"/><rect x="9" y="9" width="6" height="6" rx="1.5"/></svg>
+  </button>
+  <button class="btn" id="bDemo">Démo</button>
+  <button class="btn primary" id="bScan"><span class="dot"></span><span>Écouter</span></button>
+</header>
+
+<div id="empty"><div>
+  <h1>Aucun appareil pour l'instant</h1>
+  <p>Appuie sur <b>Écouter</b> : chaque capteur BTHome entendu apparaîtra ici.</p>
+  <p id="hint"></p>
+</div></div>
+
+<div id="field"></div>
+
+<aside id="sheet" aria-hidden="true">
+  <div class="sh-head">
+    <div class="ic" id="shIc"></div>
+    <div><h2 id="shName"></h2><small id="shSub"></small></div>
+    <button class="sh-close" id="shClose" aria-label="Fermer">
+      <svg width="14" height="14" viewBox="0 0 14 14" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 2l10 10M12 2L2 12"/></svg>
+    </button>
+  </div>
+  <div class="sh-body" id="shBody"></div>
+</aside>
+
+<div id="toast"></div>
+
+<script>
+"use strict";
+/* ======================================================================
+   BTHome decoding — https://bthome.io/format/
+   ====================================================================== */
+const UUID_V2 = 0xfcd2, UUID_V1 = 0x181c, UUID_V1_ENC = 0x181e;
+const uuid128 = n => "0000" + n.toString(16).padStart(4, "0") + "-0000-1000-8000-00805f9b34fb";
+
+// id: [key, label, unit, factor, bytes, signed, kind]
+// kind: n = number, b = binary, e = button event, d = dimmer, s = text, r = raw, m = meta
+const O = {};
+function def(id, key, label, unit, factor, bytes, signed, kind = "n") { O[id] = { id, key, label, unit, factor, bytes, signed, kind }; }
+def(0x00, "pid", "Paquet", "", 1, 1, 0, "m");
+def(0x01, "battery", "Batterie", "%", 1, 1, 0);
+def(0x02, "temperature", "Température", "°C", .01, 2, 1);
+def(0x03, "humidity", "Humidité", "%", .01, 2, 0);
+def(0x04, "pressure", "Pression", "hPa", .01, 3, 0);
+def(0x05, "illuminance", "Lumière", "lx", .01, 3, 0);
+def(0x06, "mass", "Masse", "kg", .01, 2, 0);
+def(0x07, "mass_lb", "Masse", "lb", .01, 2, 0);
+def(0x08, "dewpoint", "Point de rosée", "°C", .01, 2, 1);
+def(0x09, "count", "Compteur", "", 1, 1, 0);
+def(0x0a, "energy", "Énergie", "kWh", .001, 3, 0);
+def(0x0b, "power", "Puissance", "W", .01, 3, 0);
+def(0x0c, "voltage", "Tension", "V", .001, 2, 0);
+def(0x0d, "pm25", "PM2.5", "µg/m³", 1, 2, 0);
+def(0x0e, "pm10", "PM10", "µg/m³", 1, 2, 0);
+def(0x12, "co2", "CO₂", "ppm", 1, 2, 0);
+def(0x13, "tvoc", "COV", "µg/m³", 1, 2, 0);
+def(0x14, "moisture", "Humidité sol", "%", .01, 2, 0);
+def(0x2e, "humidity", "Humidité", "%", 1, 1, 0);
+def(0x2f, "moisture", "Humidité sol", "%", 1, 1, 0);
+def(0x3a, "button", "Bouton", "", 1, 1, 0, "e");
+def(0x3c, "dimmer", "Variateur", "", 1, 2, 0, "d");
+def(0x3d, "count", "Compteur", "", 1, 2, 0);
+def(0x3e, "count", "Compteur", "", 1, 4, 0);
+def(0x3f, "rotation", "Rotation", "°", .1, 2, 1);
+def(0x40, "distance", "Distance", "mm", 1, 2, 0);
+def(0x41, "distance_m", "Distance", "m", .1, 2, 0);
+def(0x42, "duration", "Durée", "s", .001, 3, 0);
+def(0x43, "current", "Courant", "A", .001, 2, 0);
+def(0x44, "speed", "Vitesse", "m/s", .01, 2, 0);
+def(0x45, "temperature", "Température", "°C", .1, 2, 1);
+def(0x46, "uv", "Indice UV", "", .1, 1, 0);
+def(0x47, "volume", "Volume", "L", .1, 2, 0);
+def(0x48, "volume_ml", "Volume", "mL", 1, 2, 0);
+def(0x49, "flow", "Débit", "m³/h", .001, 2, 0);
+def(0x4a, "voltage", "Tension", "V", .1, 2, 0);
+def(0x4b, "gas", "Gaz", "m³", .001, 3, 0);
+def(0x4c, "gas", "Gaz", "m³", .001, 4, 0);
+def(0x4d, "energy", "Énergie", "kWh", .001, 4, 0);
+def(0x4e, "volume", "Volume", "L", .001, 4, 0);
+def(0x4f, "water", "Eau", "L", .001, 4, 0);
+def(0x50, "timestamp", "Horodatage", "", 1, 4, 0, "m");
+def(0x51, "accel", "Accélération", "m/s²", .001, 2, 0);
+def(0x52, "gyro", "Gyroscope", "°/s", .001, 2, 0);
+def(0x53, "text", "Texte", "", 1, -1, 0, "s");
+def(0x54, "raw", "Brut", "", 1, -1, 0, "r");
+def(0x55, "storage", "Volume stocké", "L", .001, 4, 0);
+def(0x56, "conductivity", "Conductivité", "µS/cm", 1, 2, 0);
+def(0x57, "temperature", "Température", "°C", 1, 1, 1);
+def(0x58, "temperature", "Température", "°C", .35, 1, 1);
+def(0x59, "count", "Compteur", "", 1, 1, 1);
+def(0x5a, "count", "Compteur", "", 1, 2, 1);
+def(0x5b, "count", "Compteur", "", 1, 4, 1);
+def(0x5c, "power", "Puissance", "W", .01, 4, 1);
+def(0x5d, "current", "Courant", "A", .001, 2, 1);
+def(0x5e, "direction", "Direction", "°", .01, 2, 0);
+def(0x5f, "precipitation", "Précipitations", "mm", .1, 2, 0);
+def(0x60, "channel", "Canal", "", 1, 1, 0);
+def(0x61, "rpm", "Rotation", "tr/min", 1, 2, 0);
+def(0xf0, "devtype", "Type d'appareil", "", 1, 2, 0, "m");
+def(0xf1, "fw", "Firmware", "", 1, 4, 0, "m");
+def(0xf2, "fw", "Firmware", "", 1, 3, 0, "m");
+// binary sensors: [label, when 0, when 1]
+const BIN = {
+  0x0f: ["État", "non", "oui"], 0x10: ["Alimentation", "coupée", "allumée"], 0x11: ["Ouverture", "fermé", "ouvert"],
+  0x15: ["Batterie faible", "normale", "faible"], 0x16: ["Charge", "non", "en charge"], 0x17: ["CO", "normal", "détecté"],
+  0x18: ["Froid", "normal", "froid"], 0x19: ["Connexion", "déconnecté", "connecté"], 0x1a: ["Porte", "fermée", "ouverte"],
+  0x1b: ["Porte de garage", "fermée", "ouverte"], 0x1c: ["Gaz", "normal", "détecté"], 0x1d: ["Chaleur", "normale", "chaud"],
+  0x1e: ["Lumière", "sombre", "lumière"], 0x1f: ["Serrure", "verrouillée", "déverrouillée"], 0x20: ["Humidité", "sec", "humide"],
+  0x21: ["Mouvement", "calme", "mouvement"], 0x22: ["Déplacement", "immobile", "bouge"], 0x23: ["Occupation", "libre", "occupé"],
+  0x24: ["Prise", "débranchée", "branchée"], 0x25: ["Présence", "absent", "présent"], 0x26: ["Problème", "OK", "problème"],
+  0x27: ["Fonctionnement", "arrêt", "marche"], 0x28: ["Sécurité", "danger", "sûr"], 0x29: ["Fumée", "normal", "fumée !"],
+  0x2a: ["Son", "silence", "son"], 0x2b: ["Sabotage", "OK", "saboté"], 0x2c: ["Vibration", "calme", "vibration"],
+  0x2d: ["Fenêtre", "fermée", "ouverte"],
+};
+for (const [id, [label, off, on]] of Object.entries(BIN))
+  O[id] = { id: +id, key: "bin" + id, label, unit: "", factor: 1, bytes: 1, signed: 0, kind: "b", off, on };
+const BUTTON = ["", "appui", "double appui", "triple appui", "appui long", "double appui long", "triple appui long"];
+BUTTON[0x80] = "maintenu";
+
+function readInt(b, i, n, signed) {
+  let v = 0;
+  for (let k = n - 1; k >= 0; k--) v = v * 256 + b[i + k];
+  if (signed && v >= 2 ** (8 * n - 1)) v -= 2 ** (8 * n);
+  return v;
+}
+const round = (v, f) => { const d = f < 1 ? Math.max(0, Math.round(-Math.log10(f) + .3)) : 0; return +v.toFixed(d); };
+
+/* Returns {version, encrypted, trigger, values:[{key,label,unit,kind,value,text,id}], error} */
+function decode(uuid, bytes) {
+  const out = { version: 0, encrypted: false, trigger: false, values: [], error: null };
+  const push = (o, value, idx) => {
+    const v = { id: o.id, key: o.key + (idx > 1 ? "_" + idx : ""), label: o.label + (idx > 1 ? " " + idx : ""), unit: o.unit, kind: o.kind, value };
+    if (o.kind === "b") v.text = value ? o.on : o.off;
+    if (o.kind === "e") v.text = BUTTON[value] ?? "événement " + value;
+    out.values.push(v);
+  };
+  const seen = {};
+  const nth = key => (seen[key] = (seen[key] || 0) + 1);
+  if (uuid === UUID_V2) {
+    const info = bytes[0];
+    out.version = info >> 5; out.encrypted = !!(info & 1); out.trigger = !!(info & 4);
+    if (out.version !== 2) { out.error = "version " + out.version + " inconnue"; return out; }
+    if (out.encrypted) return out;
+    let i = 1;
+    while (i < bytes.length) {
+      const id = bytes[i++], o = O[id];
+      if (!o) { out.error = "objet 0x" + id.toString(16).padStart(2, "0") + " inconnu, reste ignoré"; break; }
+      let n = o.bytes;
+      if (n < 0) n = bytes[i++];
+      if (i + n > bytes.length) { out.error = "paquet tronqué"; break; }
+      if (o.kind === "s") push(o, new TextDecoder().decode(bytes.slice(i, i + n)), nth(o.key));
+      else if (o.kind === "r") push(o, hex(bytes.slice(i, i + n)), nth(o.key));
+      else if (o.kind === "d") {
+        const ev = bytes[i], steps = bytes[i + 1];
+        const v = { id, key: "dimmer", label: "Variateur", unit: "", kind: "e", value: ev ? (ev === 1 ? -steps : steps) : 0,
+                    text: ev === 1 ? "↺ " + steps + " cran(s)" : ev === 2 ? "↻ " + steps + " cran(s)" : "" };
+        out.values.push(v);
+      } else push(o, round(readInt(bytes, i, n, o.signed) * o.factor, o.factor), nth(o.key));
+      i += n;
+    }
+  } else if (uuid === UUID_V1 || uuid === UUID_V1_ENC) {
+    out.version = 1;
+    if (uuid === UUID_V1_ENC) { out.encrypted = true; return out; }
+    let i = 0;
+    while (i < bytes.length) {
+      const fmt = bytes[i], len = fmt & 31, type = fmt >> 5, id = bytes[i + 1], n = len - 1, o = O[id];
+      if (len < 2 || i + 1 + len > bytes.length) { out.error = "paquet tronqué"; break; }
+      if (o && type <= 1) push(o, round(readInt(bytes, i + 2, n, type === 1) * o.factor, o.factor), nth(o.key));
+      else if (o && type === 2 && n === 4) push(o, round(new DataView(bytes.buffer, bytes.byteOffset + i + 2, 4).getFloat32(0, true), .01), nth(o.key));
+      i += 1 + len;
+    }
+  }
+  return out;
+}
+const hex = b => Array.from(b, x => x.toString(16).padStart(2, "0")).join(" ");
+
+/* ======================================================================
+   Model
+   ====================================================================== */
+const devices = new Map();      // id -> device
+const MAX_HIST = 4000, MAX_LOG = 400;
+const PRIO = ["temperature", "humidity", "power", "co2", "pressure", "illuminance", "moisture", "voltage", "energy", "pm25", "current", "distance", "count"];
+const ICONS = {
+  temperature: '<path d="M9 2.5a2 2 0 0 1 4 0v8.2a4 4 0 1 1-4 0z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="11" cy="14" r="1.8" fill="currentColor"/>',
+  power: '<path d="M12 1 5 12h5l-1 9 7-11h-5z" fill="currentColor"/>',
+  button: '<circle cx="11" cy="11" r="8" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="11" cy="11" r="4" fill="currentColor"/>',
+  door: '<path d="M5 20V3h10v17M3 20h16" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12.5" cy="11.5" r="1.1" fill="currentColor"/>',
+  motion: '<circle cx="12" cy="4" r="2" fill="currentColor"/><path d="M8 20l3-6 3 3v4M11 14l1-6 4 3h3M12 8l-4 2-2 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>',
+  air: '<path d="M2 8h11a3 3 0 1 0-3-3M2 13h15a3 3 0 1 1-3 3M2 18h6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>',
+  light: '<circle cx="11" cy="11" r="4" fill="currentColor"/><path d="M11 1v3M11 18v3M1 11h3M18 11h3M4 4l2 2M16 16l2 2M18 4l-2 2M6 16l-2 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>',
+  lock: '<rect x="4" y="10" width="14" height="10" rx="2" fill="currentColor"/><path d="M7 10V7a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="1.8"/>',
+  generic: '<path d="M11 3a8 8 0 0 1 8 8M11 7a4 4 0 0 1 4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="11" cy="11" r="2" fill="currentColor"/>',
+};
+const icon = (d, s = 16) => `<svg width="${s}" height="${s}" viewBox="0 0 22 22">${ICONS[guessKind(d)]}</svg>`;
+function guessKind(d) {
+  const k = d.last;
+  if (k.temperature || k.humidity) return "temperature";
+  if (k.power || k.energy || k.current) return "power";
+  if (k.button || k.dimmer) return "button";
+  if (k.bin26 || k.bin45 || k.bin17 || k.bin27) return "door";
+  if (k.bin33 || k.bin37 || k.bin35) return "motion";
+  if (k.co2 || k.tvoc || k.pm25) return "air";
+  if (k.illuminance || k.bin30) return "light";
+  if (k.bin31) return "lock";
+  return "generic";
+}
+function hue(id) { let h = 0; for (const c of id) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h % 360; }
+
+function ingest({ id, name, rssi, uuid, bytes, t = Date.now() }) {
+  const r = decode(uuid, bytes);
+  let d = devices.get(id), isNew = false;
+  if (!d) {
+    isNew = true;
+    d = { id, name: name || "", rssi, first: t, seen: t, count: 0, dupes: 0, version: r.version, encrypted: r.encrypted,
+          hist: {}, last: {}, meta: {}, log: [], lastPid: null, el: null, color: `hsl(${hue(id)} 85% 62%)` };
+    devices.set(id, d);
+  }
+  if (name) d.name = name;
+  d.rssi = rssi; d.seen = t; d.version = r.version; d.encrypted = r.encrypted;
+  const pid = r.values.find(v => v.key === "pid");
+  if (pid && pid.value === d.lastPid) { d.dupes++; touch(d); return; }   // same packet repeated
+  if (pid) d.lastPid = pid.value;
+  d.count++;
+  const events = [];
+  for (const v of r.values) {
+    if (v.kind === "m") { d.meta[v.key] = v.value; continue; }
+    if (v.kind === "e" && !v.text && d.last[v.key]) continue; // "no event" keeps the last real one
+    if (v.kind === "e" && v.text) { events.push(v.text); d.lastEvent = t; }
+    d.last[v.key] = v;
+    if (typeof v.value === "number") {
+      const h = d.hist[v.key] || (d.hist[v.key] = []);
+      h.push([t, v.value]);
+      if (h.length > MAX_HIST) h.splice(0, h.length - MAX_HIST);
+    }
+  }
+  d.log.unshift({ t, rssi, enc: r.encrypted, err: r.error, raw: hex(bytes), txt: r.values.filter(v => v.kind !== "m").map(fmt).join(" · ") });
+  if (d.log.length > MAX_LOG) d.log.length = MAX_LOG;
+  if (isNew) spawn(d); else render(d, true);
+  for (const e of events) showEvent(d, e);
+  sky.pulse(d);
+  if (sheetDev === d) renderSheet();
+  updateStat();
+}
+function touch(d) { if (d.el) renderFoot(d); }
+
+const fmtNum = (v, unit) => {
+  if (typeof v !== "number") return v;
+  const a = Math.abs(v);
+  let s = a >= 1000 ? v.toFixed(0) : a >= 100 ? v.toFixed(1) : a >= 10 ? v.toFixed(1) : v.toFixed(2);
+  if (unit === "%" || unit === "ppm" || unit === "lx" && a >= 10) s = Math.round(v).toString();
+  return s.replace(".", ",");
+};
+const fmt = v => v.text != null ? `${v.label} ${v.text}` : `${v.label} ${fmtNum(v.value, v.unit)}${v.unit ? " " + v.unit : ""}`;
+
+/* ======================================================================
+   Cards
+   ====================================================================== */
+const field = document.getElementById("field");
+let layout = {};
+try { layout = JSON.parse(localStorage.getItem("bthome-layout") || "{}"); } catch (e) {}
+const saveLayout = () => { try { localStorage.setItem("bthome-layout", JSON.stringify(layout)); } catch (e) {} };
+
+function spawn(d) {
+  const el = document.createElement("div");
+  el.className = "dev";
+  el.style.setProperty("--c", d.color);
+  el.innerHTML = `<div class="top"><div class="ic"></div><div class="orb"></div><div class="nm"></div>
+    <button class="mini" aria-label="Réduire"><svg width="16" height="16" viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"><path d="M3 8h10"/></svg></button></div>
+    <div class="vals"></div><canvas class="spark"></canvas><div class="foot"></div>`;
+  d.el = el;
+  const L = layout[d.id];
+  d.min = L ? !!L.min : false;
+  el.classList.toggle("min", d.min);
+  const p = L && L.x != null ? clampPos(L.x, L.y, el) : freeSpot(d.min);
+  d.x = p.x; d.y = p.y;
+  place(d);
+  field.appendChild(el);
+  hookDrag(d);
+  el.querySelector(".mini").addEventListener("click", ev => { ev.stopPropagation(); toggleMin(d); });
+  render(d, false);
+  document.getElementById("empty").hidden = true;
+}
+function place(d) { const t = `translate(${d.x}px, ${d.y}px)`; d.el.style.transform = t; d.el.style.setProperty("--t", t); }
+function size(min) { return min ? { w: 66, h: 66 } : { w: 196, h: 150 }; }
+function clampPos(x, y, el) {
+  const W = innerWidth, H = innerHeight, w = el ? el.offsetWidth || 196 : 196, h = el ? el.offsetHeight || 150 : 150;
+  return { x: Math.max(6, Math.min(W - w - 6, x)), y: Math.max(64, Math.min(H - h - 6, y)) };
+}
+function freeSpot(min) {
+  const { w, h } = size(min), W = innerWidth, H = innerHeight;
+  const rects = [...devices.values()].filter(o => o.el && o.el.isConnected).map(o => ({ x: o.x, y: o.y, w: o.el.offsetWidth, h: o.el.offsetHeight }));
+  let best = null, bestScore = -1;
+  for (let k = 0; k < 60; k++) {
+    const x = 8 + Math.random() * Math.max(1, W - w - 16), y = 70 + Math.random() * Math.max(1, H - h - 80);
+    let dmin = 1e9;
+    for (const r of rects) {
+      const dx = Math.max(0, Math.max(r.x - (x + w), x - (r.x + r.w))), dy = Math.max(0, Math.max(r.y - (y + h), y - (r.y + r.h)));
+      dmin = Math.min(dmin, Math.hypot(dx, dy) - (dx === 0 && dy === 0 ? 1000 : 0));
+    }
+    if (dmin > bestScore) { bestScore = dmin; best = { x, y }; }
+  }
+  return best;
+}
+function toggleMin(d) {
+  d.min = !d.min;
+  d.el.classList.toggle("min", d.min);
+  layout[d.id] = { ...(layout[d.id] || {}), min: d.min, x: d.x, y: d.y };
+  saveLayout();
+  requestAnimationFrame(() => setTimeout(() => { Object.assign(d, clampPos(d.x, d.y, d.el)); place(d); }, 380));
+  render(d, false);
+}
+function arrange() {
+  const list = [...devices.values()].sort((a, b) => a.first - b.first);
+  const W = innerWidth, gap = 10;
+  let x = 10, y = 72, rowH = 0;
+  for (const d of list) {
+    const { w, h } = { w: d.el.offsetWidth, h: d.el.offsetHeight };
+    if (x + w > W - 8 && x > 10) { x = 10; y += rowH + gap; rowH = 0; }
+    d.x = x; d.y = y; x += w + gap; rowH = Math.max(rowH, h);
+    d.el.style.transition = "transform .5s cubic-bezier(.2,.9,.2,1)";
+    place(d);
+    setTimeout(() => (d.el.style.transition = ""), 520);
+    layout[d.id] = { ...(layout[d.id] || {}), x: d.x, y: d.y, min: d.min };
+  }
+  saveLayout();
+}
+
+function hookDrag(d) {
+  const el = d.el;
+  let sx, sy, ox, oy, moved, pid = null, vx = 0, vy = 0, lt = 0, lx = 0, ly = 0;
+  el.addEventListener("pointerdown", e => {
+    if (e.target.closest(".mini")) return;
+    pid = e.pointerId; el.setPointerCapture(pid);
+    sx = e.clientX; sy = e.clientY; ox = d.x; oy = d.y; moved = false;
+    lt = performance.now(); lx = sx; ly = sy; vx = vy = 0;
+    field.appendChild(el); // bring to front
+  });
+  el.addEventListener("pointermove", e => {
+    if (e.pointerId !== pid) return;
+    const dx = e.clientX - sx, dy = e.clientY - sy;
+    if (!moved && Math.hypot(dx, dy) < 6) return;
+    if (!moved) { moved = true; el.classList.add("drag"); }
+    const now = performance.now(), dt = Math.max(1, now - lt);
+    vx = .7 * vx + .3 * (e.clientX - lx) / dt; vy = .7 * vy + .3 * (e.clientY - ly) / dt;
+    lt = now; lx = e.clientX; ly = e.clientY;
+    Object.assign(d, clampPos(ox + dx, oy + dy, el)); place(d);
+  });
+  const end = e => {
+    if (e.pointerId !== pid) return;
+    pid = null; el.classList.remove("drag");
+    if (!moved) { openSheet(d); return; }
+    // a little inertia
+    let f = 0; const step = () => {
+      vx *= .9; vy *= .9; if (Math.hypot(vx, vy) < .02 || ++f > 40) { layout[d.id] = { x: d.x, y: d.y, min: d.min }; saveLayout(); return; }
+      Object.assign(d, clampPos(d.x + vx * 16, d.y + vy * 16, el)); place(d); requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  };
+  el.addEventListener("pointerup", end);
+  el.addEventListener("pointercancel", end);
+}
+
+function mainKeys(d) {
+  const ks = Object.keys(d.last).filter(k => d.last[k].kind === "n" && !k.startsWith("battery"));
+  ks.sort((a, b) => (PRIO.indexOf(a.replace(/_\d+$/, "")) + 1 || 99) - (PRIO.indexOf(b.replace(/_\d+$/, "")) + 1 || 99));
+  const bins = Object.keys(d.last).filter(k => d.last[k].kind === "b");
+  return [...ks.slice(0, 4), ...bins].slice(0, 4);
+}
+function emptyVals(d) {
+  const box = (n, l) => `<div class="v wide"><div class="n" style="font-size:15px">${n}</div><div class="l">${l}</div></div>`;
+  if (d.encrypted) return box("🔒 chiffré", "clé requise");
+  const ev = Object.values(d.last).filter(v => v.kind === "e" && v.text);
+  if (ev.length) { const e = ev[ev.length - 1]; return box(e.text, e.label + " · " + ago(d.lastEvent || d.seen)); }
+  return box("—", "données");
+}
+function displayName(d) { return d.name || "BTHome " + d.id.slice(0, 4).toUpperCase(); }
+
+function render(d, live) {
+  const el = d.el;
+  el.querySelector(".ic").innerHTML = icon(d);
+  el.querySelector(".nm").textContent = displayName(d);
+  const keys = mainKeys(d), box = el.querySelector(".vals");
+  const prev = d._shown || {};
+  box.innerHTML = keys.map(k => {
+    const v = d.last[k];
+    const n = v.kind === "b" ? v.text : fmtNum(v.value, v.unit);
+    return `<div class="v${v.kind === "b" && keys.length === 1 ? " wide" : ""}"><div class="n" data-k="${k}">${n}${v.unit ? `<u>${v.unit}</u>` : ""}</div><div class="l">${v.label}</div></div>`;
+  }).join("") || emptyVals(d);
+  if (live) for (const k of keys) {
+    const now = d.last[k].value;
+    if (prev[k] !== undefined && prev[k] !== now) {
+      const n = box.querySelector(`[data-k="${k}"]`); n.classList.add("flash"); setTimeout(() => n.classList.remove("flash"), 60);
+    }
+  }
+  d._shown = Object.fromEntries(keys.map(k => [k, d.last[k].value]));
+  const orbKey = keys[0];
+  el.querySelector(".orb").textContent = orbKey ? (d.last[orbKey].kind === "b" ? d.last[orbKey].text.slice(0, 7) : fmtNum(d.last[orbKey].value, d.last[orbKey].unit) + (d.last[orbKey].unit.length <= 2 ? d.last[orbKey].unit : "")) : "";
+  drawSpark(el.querySelector(".spark"), d, keys.find(k => d.last[k].kind === "n"));
+  renderFoot(d);
+  if (live) { el.classList.remove("ping"); void el.offsetWidth; el.classList.add("ping"); }
+}
+function renderFoot(d) {
+  const lvl = d.rssi > -60 ? 4 : d.rssi > -70 ? 3 : d.rssi > -80 ? 2 : d.rssi > -90 ? 1 : 0;
+  const bars = [4, 6, 8, 11].map((h, i) => `<i style="height:${h}px" class="${i < lvl ? "on" : ""}"></i>`).join("");
+  const b = d.last.battery;
+  d.el.querySelector(".foot").innerHTML = `<span class="bars" title="${d.rssi} dBm">${bars}</span><span>${d.rssi}</span>` +
+    (b ? `<span class="batt"><svg width="14" height="8" viewBox="0 0 14 8"><rect x=".5" y=".5" width="11" height="7" rx="1.5" fill="none" stroke="currentColor"/><rect x="2" y="2" width="${Math.max(.5, 8 * b.value / 100)}" height="4" fill="${b.value < 20 ? "var(--bad)" : "currentColor"}"/><rect x="12" y="2.5" width="1.5" height="3" fill="currentColor"/></svg>${b.value}%</span>` : "") +
+    `<span class="sp" data-ago>${ago(d.seen)}</span>`;
+  d.el.classList.toggle("stale", Date.now() - d.seen > 120000);
+}
+const ago = t => { const s = Math.round((Date.now() - t) / 1000); return s < 2 ? "à l'instant" : s < 60 ? s + " s" : s < 3600 ? Math.floor(s / 60) + " min" : Math.floor(s / 3600) + " h"; };
+
+function drawSpark(cv, d, key) {
+  const dpr = devicePixelRatio || 1, w = cv.clientWidth || 196, h = cv.clientHeight || 30;
+  if (!key) { cv.hidden = true; return; } cv.hidden = false;
+  cv.width = w * dpr; cv.height = h * dpr;
+  const g = cv.getContext("2d"); g.scale(dpr, dpr);
+  const pts = (d.hist[key] || []).slice(-60);
+  if (pts.length < 2) return;
+  plot(g, pts, w, h, d.color, 3, false);
+}
+function plot(g, pts, w, h, color, pad, axes) {
+  let lo = Infinity, hi = -Infinity;
+  for (const p of pts) { lo = Math.min(lo, p[1]); hi = Math.max(hi, p[1]); }
+  if (hi - lo < 1e-9) { hi += 1; lo -= 1; }
+  const t0 = pts[0][0], t1 = Math.max(pts[pts.length - 1][0], t0 + 1);
+  const X = t => pad + (t - t0) / (t1 - t0) * (w - 2 * pad), Y = v => h - pad - (v - lo) / (hi - lo) * (h - 2 * pad);
+  const grad = g.createLinearGradient(0, 0, 0, h);
+  grad.addColorStop(0, color.replace("62%)", "62% / .35)")); grad.addColorStop(1, color.replace("62%)", "62% / 0)"));
+  g.beginPath(); g.moveTo(X(pts[0][0]), h);
+  for (const p of pts) g.lineTo(X(p[0]), Y(p[1]));
+  g.lineTo(X(pts[pts.length - 1][0]), h); g.closePath(); g.fillStyle = grad; g.fill();
+  g.beginPath();
+  pts.forEach((p, i) => i ? g.lineTo(X(p[0]), Y(p[1])) : g.moveTo(X(p[0]), Y(p[1])));
+  g.strokeStyle = color; g.lineWidth = 1.6; g.lineJoin = "round"; g.stroke();
+  const lp = pts[pts.length - 1];
+  g.beginPath(); g.arc(X(lp[0]), Y(lp[1]), 2.6, 0, 7); g.fillStyle = color; g.fill();
+  if (axes) {
+    g.fillStyle = "#8592a8"; g.font = "10px JetBrains Mono, monospace";
+    g.fillText(fmtNum(hi), 2, 10); g.fillText(fmtNum(lo), 2, h - 2);
+  }
+}
+function showEvent(d, text) {
+  const b = document.createElement("div"); b.className = "evt"; b.textContent = text;
+  d.el.appendChild(b); setTimeout(() => b.remove(), 2500);
+  if (navigator.vibrate) try { navigator.vibrate(30); } catch (e) {}
+}
+
+/* ======================================================================
+   Detail sheet
+   ====================================================================== */
+const sheet = document.getElementById("sheet");
+let sheetDev = null;
+function openSheet(d) { sheetDev = d; renderSheet(); sheet.classList.add("open"); sheet.setAttribute("aria-hidden", "false"); }
+function closeSheet() { sheetDev = null; sheet.classList.remove("open"); sheet.setAttribute("aria-hidden", "true"); }
+document.getElementById("shClose").onclick = closeSheet;
+field.addEventListener("pointerdown", e => { if (e.target === field) closeSheet(); });
+addEventListener("keydown", e => { if (e.key === "Escape") closeSheet(); });
+
+function renderSheet() {
+  const d = sheetDev; if (!d) return;
+  sheet.style.setProperty("--c", d.color);
+  const ic = document.getElementById("shIc");
+  ic.innerHTML = icon(d, 22); ic.style.background = d.color.replace("62%)", "62% / .18)"); ic.style.color = d.color;
+  document.getElementById("shName").textContent = displayName(d);
+  document.getElementById("shSub").textContent = `${d.count} paquet${d.count > 1 ? "s" : ""} · ${d.rssi} dBm · vu ${ago(d.seen)}`;
+  const body = document.getElementById("shBody");
+  const tiles = Object.values(d.last).filter(v => v.kind !== "m").map(v => {
+    const h = d.hist[v.key] || [];
+    let mm = "";
+    if (v.kind === "n" && h.length > 1) {
+      let lo = Infinity, hi = -Infinity, s = 0; for (const p of h) { lo = Math.min(lo, p[1]); hi = Math.max(hi, p[1]); s += p[1]; }
+      mm = `<div class="mm"><span>min ${fmtNum(lo, v.unit)}</span><span>moy ${fmtNum(s / h.length, v.unit)}</span><span>max ${fmtNum(hi, v.unit)}</span><span>${h.length} pts</span></div>`;
+    }
+    const val = v.text != null ? v.text || "—" : fmtNum(v.value, v.unit);
+    return `<div class="tile"><div class="row"><span class="l">${v.label}</span><span class="n">${val}${v.unit && v.text == null ? `<u>${v.unit}</u>` : ""}</span></div>${mm}${v.kind === "n" && h.length > 1 ? `<canvas data-k="${v.key}"></canvas>` : ""}</div>`;
+  }).join("");
+  const meta = [["Identifiant", d.id], ["Format", "BTHome v" + d.version + (d.encrypted ? " (chiffré)" : "")],
+    ["Premier vu", new Date(d.first).toLocaleTimeString("fr-CH")], ["Doublons", d.dupes]];
+  if (d.meta.fw != null) meta.push(["Firmware", d.meta.fw]);
+  if (d.meta.devtype != null) meta.push(["Type", d.meta.devtype]);
+  if (d.meta.pid != null) meta.push(["N° paquet", d.meta.pid]);
+  const log = d.log.slice(0, 120).map(l =>
+    `<div><b>${new Date(l.t).toLocaleTimeString("fr-CH")}</b> ${l.enc ? "🔒 " : ""}<em>${l.txt || l.err || "—"}</em>${l.err && l.txt ? " · " + l.err : ""}<br>&nbsp;&nbsp;${l.raw} · ${l.rssi} dBm</div>`).join("");
+  const scroll = body.scrollTop;
+  body.innerHTML = (d.encrypted ? `<div class="tile">🔒 Les données de cet appareil sont chiffrées (AES-CCM) : elles ne peuvent pas être lues sans sa clé.</div>` : "") +
+    tiles + `<div class="sec">Appareil</div><dl class="meta">${meta.map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join("")}</dl>` +
+    `<div class="sec">Historique reçu (${d.log.length})</div><div class="log">${log}</div>`;
+  body.scrollTop = scroll;
+  body.querySelectorAll("canvas[data-k]").forEach(cv => {
+    const dpr = devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+    cv.width = w * dpr; cv.height = h * dpr;
+    const g = cv.getContext("2d"); g.scale(dpr, dpr);
+    plot(g, d.hist[cv.dataset.k].slice(-600), w, h, d.color, 4, true);
+  });
+}
+
+/* ======================================================================
+   Background: drifting radar with packet pulses
+   ====================================================================== */
+const sky = (() => {
+  const cv = document.getElementById("sky"), g = cv.getContext("2d");
+  let W, H, dpr, stars = [], waves = [];
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function resize() {
+    dpr = Math.min(2, devicePixelRatio || 1); W = innerWidth; H = innerHeight;
+    cv.width = W * dpr; cv.height = H * dpr;
+    stars = Array.from({ length: Math.round(W * H / 5000) }, () => ({ x: Math.random() * W, y: Math.random() * H, r: Math.random() * 1.2 + .2, p: Math.random() * 6 }));
+  }
+  addEventListener("resize", () => { resize(); devices.forEach(d => { if (d.el) { Object.assign(d, clampPos(d.x, d.y, d.el)); place(d); } }); });
+  resize();
+  function frame(t) {
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const bg = g.createRadialGradient(W / 2, H * .55, 0, W / 2, H * .55, Math.max(W, H) * .8);
+    bg.addColorStop(0, "#0c1422"); bg.addColorStop(1, "#05070c");
+    g.fillStyle = bg; g.fillRect(0, 0, W, H);
+    const cx = W / 2, cy = H * .55, R = Math.hypot(W, H) * .6;
+    // rings
+    g.strokeStyle = "rgba(70,230,193,.06)"; g.lineWidth = 1;
+    for (let r = 80; r < R; r += 90) { g.beginPath(); g.arc(cx, cy, r, 0, 7); g.stroke(); }
+    // sweep
+    if (scanning || demo) {
+      const a = (t / 2600) % (Math.PI * 2);
+      const sw = g.createConicGradient ? g.createConicGradient(a - .9, cx, cy) : null;
+      if (sw) {
+        sw.addColorStop(0, "rgba(70,230,193,0)"); sw.addColorStop(.14, "rgba(70,230,193,.10)"); sw.addColorStop(.1435, "rgba(70,230,193,0)"); sw.addColorStop(1, "rgba(70,230,193,0)");
+        g.fillStyle = sw; g.beginPath(); g.arc(cx, cy, R, 0, 7); g.fill();
+      }
+    }
+    // stars
+    for (const s of stars) {
+      g.globalAlpha = .25 + .35 * (reduce ? .5 : (Math.sin(t / 900 + s.p) + 1) / 2);
+      g.fillStyle = "#cfe3ff"; g.beginPath(); g.arc(s.x, s.y, s.r, 0, 7); g.fill();
+    }
+    g.globalAlpha = 1;
+    // packet waves
+    waves = waves.filter(w => t - w.t0 < 1600);
+    for (const w of waves) {
+      const k = (t - w.t0) / 1600;
+      g.strokeStyle = w.c.replace("62%)", `62% / ${(1 - k) * .55})`); g.lineWidth = 2 * (1 - k) + .5;
+      g.beginPath(); g.arc(w.x, w.y, 30 + k * 140, 0, 7); g.stroke();
+    }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+  return {
+    pulse(d) {
+      if (reduce || !d.el) return;
+      const w = d.el.offsetWidth, h = d.el.offsetHeight;
+      waves.push({ x: d.x + w / 2, y: d.y + h / 2, c: d.color, t0: performance.now() });
+    },
+  };
+})();
+
+/* ======================================================================
+   Bluetooth scanning (Web Bluetooth Scanning API, Chrome Android)
+   ====================================================================== */
+let scanning = false, scanHandle = null, wakeLock = null, demo = null, total = 0;
+const bScan = document.getElementById("bScan");
+const UUIDS = [UUID_V2, UUID_V1, UUID_V1_ENC].map(n => [n, uuid128(n)]);
+
+function onAdv(ev) {
+  for (const [n, u] of UUIDS) {
+    const dv = ev.serviceData && ev.serviceData.get(u);
+    if (!dv) continue;
+    total++;
+    ingest({ id: ev.device.id, name: ev.device.name || ev.name, rssi: ev.rssi ?? 0, uuid: n, bytes: new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength) });
+  }
+}
+
+async function startScan() {
+  if (!navigator.bluetooth || !navigator.bluetooth.requestLEScan) {
+    toast("Écoute Bluetooth indisponible dans ce navigateur : voir les instructions à l'écran.");
+    showHint(true);
+    return;
+  }
+  try {
+    navigator.bluetooth.removeEventListener("advertisementreceived", onAdv);
+    navigator.bluetooth.addEventListener("advertisementreceived", onAdv);
+    scanHandle = await navigator.bluetooth.requestLEScan({ acceptAllAdvertisements: true, keepRepeatedDevices: true });
+    scanning = true; setScanUI();
+    try { wakeLock = await navigator.wakeLock?.request("screen"); } catch (e) {}
+    toast("Écoute en cours : laisse l'écran allumé.");
+  } catch (e) {
+    toast("Impossible d'écouter : " + (e.message || e.name));
+  }
+}
+function stopScan() {
+  try { scanHandle && scanHandle.stop(); } catch (e) {}
+  scanHandle = null; scanning = false; setScanUI();
+  try { wakeLock && wakeLock.release(); } catch (e) {} wakeLock = null;
+}
+function setScanUI() {
+  bScan.classList.toggle("on", scanning);
+  bScan.lastElementChild.textContent = scanning ? "Arrêter" : "Écouter";
+  updateStat();
+}
+bScan.onclick = () => scanning ? stopScan() : startScan();
+document.addEventListener("visibilitychange", async () => {
+  if (document.visibilityState === "visible" && scanning) {
+    // Chrome stops the scan when the page is hidden: restart it
+    try { scanHandle && scanHandle.stop(); } catch (e) {}
+    try { scanHandle = await navigator.bluetooth.requestLEScan({ acceptAllAdvertisements: true, keepRepeatedDevices: true }); } catch (e) { scanning = false; setScanUI(); }
+    try { wakeLock = await navigator.wakeLock?.request("screen"); } catch (e) {}
+  }
+});
+
+function updateStat() {
+  const n = devices.size;
+  document.getElementById("stat").textContent =
+    (scanning ? "écoute" : demo ? "démo" : "à l'arrêt") + ` · ${n} appareil${n > 1 ? "s" : ""}` + (total ? ` · ${total} paquets` : "");
+}
+setInterval(() => { devices.forEach(d => d.el && renderFoot(d)); if (sheetDev) document.getElementById("shSub").textContent = `${sheetDev.count} paquet${sheetDev.count > 1 ? "s" : ""} · ${sheetDev.rssi} dBm · vu ${ago(sheetDev.seen)}`; }, 1000);
+
+function showHint(force) {
+  const ok = navigator.bluetooth && navigator.bluetooth.requestLEScan;
+  const h = document.getElementById("hint");
+  if (ok && !force) { h.innerHTML = ""; return; }
+  h.innerHTML = !window.isSecureContext
+    ? `<span class="warn">Cette page doit être servie en HTTPS (ou déclarée sûre dans <code>chrome://flags/#unsafely-treat-insecure-origin-as-secure</code>).</span>`
+    : `<span class="warn">Chrome Android : active <code>chrome://flags/#enable-experimental-web-platform-features</code>, relance Chrome, puis active Bluetooth et la localisation.</span>`;
+}
+showHint(false);
+
+let toastT;
+function toast(msg) {
+  const t = document.getElementById("toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("show"), 3800);
+}
+document.getElementById("bArrange").onclick = arrange;
+
+/* ======================================================================
+   Demo: simulated devices emitting real BTHome v2 payloads
+   ====================================================================== */
+function le(v, n) { const a = []; v = Math.round(v); if (v < 0) v += 2 ** (8 * n); for (let i = 0; i < n; i++) { a.push(v & 255); v = Math.floor(v / 256); } return a; }
+const SIM = [
+  { id: "demo-salon", name: "Salon H&T", every: 2500, f(k, t) { return [0x40, 0x00, k & 255, 0x01, 87, 0x02, ...le((21.3 + Math.sin(t / 20000) * 1.4 + Math.random() * .1) * 100, 2), 0x03, ...le((48 + Math.sin(t / 31000) * 6) * 100, 2)]; } },
+  { id: "demo-jardin", name: "Jardin", every: 4000, f(k, t) { return [0x40, 0x00, k & 255, 0x01, 64, 0x45, ...le((12.6 + Math.sin(t / 15000) * 2.5) * 10, 2), 0x2e, 71, 0x04, ...le((1013.2 + Math.sin(t / 50000) * 3) * 100, 3), 0x05, ...le((800 + Math.sin(t / 9000) * 600) * 100, 3)]; } },
+  { id: "demo-bouton", name: "Shelly BLU Button", every: 6000, f(k) { return [0x44, 0x00, k & 255, 0x01, 100, 0x3a, [1, 2, 1, 4, 3][k % 5]]; } },
+  { id: "demo-porte", name: "Porte d'entrée", every: 5000, f(k) { return [0x44, 0x00, k & 255, 0x01, 93, 0x05, ...le(120 * 100, 3), 0x2d, k % 2, 0x3f, ...le(k % 2 ? 900 : 0, 2)]; } },
+  { id: "demo-prise", name: "Prise lave-linge", every: 1800, f(k, t) { const p = 1800 + Math.sin(t / 4000) * 600 + Math.random() * 80; return [0x40, 0x00, k & 255, 0x0b, ...le(p * 100, 3), 0x0c, ...le(230.1 * 1000 + Math.random() * 900, 2), 0x0a, ...le(1520 + t / 1e4, 3)]; } },
+  { id: "demo-co2", name: "Bureau CO₂", every: 3200, f(k, t) { return [0x40, 0x00, k & 255, 0x12, ...le(620 + Math.sin(t / 25000) * 300, 2), 0x02, ...le(22.4 * 100, 2), 0x2e, 44]; } },
+];
+function startDemo() {
+  if (demo) { demo.forEach(clearInterval); demo = null; document.getElementById("bDemo").classList.remove("on"); updateStat(); return; }
+  document.getElementById("bDemo").classList.add("on");
+  demo = [];
+  SIM.forEach((s, i) => {
+    let k = 0;
+    const fire = () => { k++; const b = new Uint8Array(s.f(k, Date.now())); total++; ingest({ id: s.id, name: s.name, rssi: -55 - Math.round(Math.random() * 30), uuid: UUID_V2, bytes: b }); };
+    setTimeout(fire, 400 + i * 900);
+    demo.push(setInterval(fire, s.every));
+  });
+  updateStat();
+}
+document.getElementById("bDemo").onclick = startDemo;
+if (location.hash === "#demo") startDemo();
+</script>
+</body>
+</html>
