@@ -160,6 +160,24 @@ body.filtering #fbar { transform: none; opacity: 1; pointer-events: auto; }
 .chip.on { background: var(--accent); color: #04221b; border-color: transparent; }
 .chip.on small { color: #04221b; opacity: .7; }
 
+/* dual-thumb RSSI range: two stacked range inputs, only their thumbs take pointer events */
+.frssi { display: flex; align-items: center; gap: 12px; padding: 0 4px; }
+.frssi .lab { font: 12px var(--mono); color: var(--dim); white-space: nowrap; min-width: 0; }
+.frssi .lab b { color: var(--fg); font-weight: 600; }
+.frssi.on .lab b { color: var(--accent); }
+.dual { position: relative; flex: 1; height: 34px; min-width: 120px; }
+.dual .track { position: absolute; left: 11px; right: 11px; top: 50%; height: 4px; margin-top: -2px; border-radius: 2px; background: var(--line); }
+.dual .fill { position: absolute; top: 0; bottom: 0; border-radius: 2px; background: var(--accent); }
+.dual input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; background: none; pointer-events: none; -webkit-appearance: none; appearance: none; }
+.dual input::-webkit-slider-runnable-track { background: none; border: 0; }
+.dual input::-moz-range-track { background: none; border: 0; }
+.dual input::-webkit-slider-thumb { -webkit-appearance: none; pointer-events: auto; width: 22px; height: 22px; border-radius: 50%;
+  background: var(--fg); border: 3px solid var(--accent); box-shadow: 0 2px 8px rgba(0, 0, 0, .5); cursor: grab; }
+.dual input::-moz-range-thumb { pointer-events: auto; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--fg); border: 3px solid var(--accent); box-shadow: 0 2px 8px rgba(0, 0, 0, .5); cursor: grab; }
+.dual input:active::-webkit-slider-thumb { transform: scale(1.15); }
+.dual input:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--accent); outline-offset: 2px; }
+
 /* ---------- empty state ---------- */
 #empty {
   position: fixed; inset: 0; z-index: 4; display: grid; place-items: center; pointer-events: none;
@@ -242,6 +260,14 @@ body.filtering #fbar { transform: none; opacity: 1; pointer-events: auto; }
     <button id="fclear" aria-label="Effacer le filtre"><svg width="12" height="12" viewBox="0 0 14 14" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 2l10 10M12 2L2 12"/></svg></button>
   </label>
   <div class="chips" id="fchips"></div>
+  <div class="frssi" id="frssi">
+    <span class="lab">RSSI moyen <b id="frlab"></b></span>
+    <div class="dual">
+      <div class="track"><div class="fill" id="frfill"></div></div>
+      <input type="range" id="frlo" min="-100" max="-30" step="1" aria-label="RSSI moyen minimum">
+      <input type="range" id="frhi" min="-100" max="-30" step="1" aria-label="RSSI moyen maximum">
+    </div>
+  </div>
 </div>
 
 <div id="empty"><div>
@@ -432,6 +458,8 @@ const hex = b => Array.from(b, x => x.toString(16).padStart(2, "0")).join(" ");
 /* ======================================================================
    Model
    ====================================================================== */
+const RSSI_N = 20; // mean RSSI over the last packets (duplicates included)
+const rssiMean = d => d.rssis && d.rssis.length ? d.rssis.reduce((a, b) => a + b, 0) / d.rssis.length : d.rssi;
 const devices = new Map();      // id -> device
 const MAX_HIST = 4000, MAX_LOG = 400;
 const PRIO = ["temperature", "humidity", "power", "co2", "pressure", "illuminance", "moisture", "voltage", "energy", "pm25", "current", "distance", "count"];
@@ -472,6 +500,8 @@ function ingest({ id, name, rssi, uuid, bytes, t = Date.now() }) {
   }
   if (name) d.name = name;
   d.rssi = rssi; d.seen = t; d.version = r.version; d.encrypted = r.encrypted;
+  (d.rssis || (d.rssis = [])).push(rssi);
+  if (d.rssis.length > RSSI_N) d.rssis.shift();
   const pid = r.values.find(v => v.key === "pid");
   if (pid && pid.value === d.lastPid) { d.dupes++; touch(d); return; }   // same packet repeated
   if (pid) d.lastPid = pid.value;
@@ -491,7 +521,7 @@ function ingest({ id, name, rssi, uuid, bytes, t = Date.now() }) {
   d.log.unshift({ t, rssi, enc: r.encrypted, err: r.error, raw: hex(bytes), txt: r.values.filter(v => v.kind !== "m").map(fmt).join(" · ") });
   if (d.log.length > MAX_LOG) d.log.length = MAX_LOG;
   if (isNew) spawn(d); else render(d, true);
-  if (filterOn()) { const hide = !matches(d); if (d.el.hidden !== hide) { d.el.hidden = hide; applyFilter(); } }
+  if (filterOn() && d.el.hidden !== !matches(d)) applyFilter();
   for (const e of events) showEvent(d, e);
   sky.pulse(d);
   if (sheetDev === d) renderSheet();
@@ -741,7 +771,7 @@ function renderSheet() {
     const val = v.text != null ? v.text || "—" : fmtNum(v.value, v.unit);
     return `<div class="tile"><div class="row"><span class="l">${v.label}</span><span class="n">${val}${v.unit && v.text == null ? `<u>${v.unit}</u>` : ""}</span></div>${mm}${v.kind === "n" && h.length > 1 ? `<canvas data-k="${v.key}"></canvas>` : ""}</div>`;
   }).join("");
-  const meta = [["Adresse BLE", "non transmise : Chrome ne donne jamais l'adresse Bluetooth à une page web"], ["Identifiant", shortId(d.id) + " · " + d.id], ["Format", "BTHome v" + d.version + (d.encrypted ? " (chiffré)" : "")],
+  const meta = [["Adresse BLE", "non transmise : Chrome ne donne jamais l'adresse Bluetooth à une page web"], ["Identifiant", shortId(d.id) + " · " + d.id], ["RSSI moyen", `${Math.round(rssiMean(d))} dBm (${(d.rssis || []).length} derniers paquets)`], ["Format", "BTHome v" + d.version + (d.encrypted ? " (chiffré)" : "")],
     ["Premier vu", new Date(d.first).toLocaleTimeString("fr-CH")], ["Doublons", d.dupes]];
   if (d.meta.fw != null) meta.push(["Firmware", d.meta.fw]);
   if (d.meta.devtype != null) meta.push(["Type", d.meta.devtype]);
@@ -917,9 +947,16 @@ function updateStat() {
 const norm = t => String(t).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 const KIND_WORDS = { temperature: "temperature climat", power: "energie electricite prise", button: "bouton telecommande",
   door: "porte fenetre ouverture", motion: "mouvement presence", air: "air co2 qualite", light: "lumiere", lock: "serrure", generic: "" };
-const filt = { q: "", types: new Set() };
-try { const f = JSON.parse(localStorage.getItem("bthome-filter") || "{}"); filt.q = f.q || ""; filt.types = new Set(f.types || []); } catch (e) {}
-const filterOn = () => !!(filt.q.trim() || filt.types.size);
+const R_MIN = -100, R_MAX = -30;
+const filt = { q: "", types: new Set(), lo: R_MIN, hi: R_MAX };
+try {
+  const f = JSON.parse(localStorage.getItem("bthome-filter") || "{}");
+  filt.q = f.q || ""; filt.types = new Set(f.types || []);
+  if (Number.isFinite(f.lo)) filt.lo = f.lo;
+  if (Number.isFinite(f.hi)) filt.hi = f.hi;
+} catch (e) {}
+const rssiOn = () => filt.lo > R_MIN || filt.hi < R_MAX;
+const filterOn = () => !!(filt.q.trim() || filt.types.size || rssiOn());
 const typesOf = d => {
   const t = new Set(Object.values(d.last).filter(v => v.kind !== "m").map(v => v.label.replace(/ \d+$/, "")));
   if (d.encrypted) t.add("Chiffré");
@@ -927,6 +964,11 @@ const typesOf = d => {
   return t;
 };
 function matches(d) {
+  if (rssiOn()) {
+    // the slider ends mean "no limit", so very weak or very strong devices are kept there
+    const m = rssiMean(d);
+    if ((filt.lo > R_MIN && m < filt.lo) || (filt.hi < R_MAX && m > filt.hi)) return false;
+  }
   const types = typesOf(d);
   if (filt.types.size && ![...filt.types].some(t => types.has(t))) return false;
   const words = norm(filt.q).split(/\s+/).filter(Boolean);
@@ -937,14 +979,15 @@ function matches(d) {
 }
 let arrangeT;
 function applyFilter() {
-  devices.forEach(d => { if (d.el) d.el.hidden = !matches(d); });
+  let changed = false;
+  devices.forEach(d => { if (d.el) { const h = !matches(d); if (d.el.hidden !== h) { d.el.hidden = h; changed = true; } } });
   const on = filterOn(), shown = [...devices.values()].filter(d => d.el && !d.el.hidden).length;
   const bf = document.getElementById("bFilter"), badge = bf.querySelector(".badge");
   bf.classList.toggle("active", on);
   badge.hidden = !on; badge.textContent = shown;
   document.getElementById("fcnt").textContent = devices.size ? `${shown} / ${devices.size}` : "";
-  try { localStorage.setItem("bthome-filter", JSON.stringify({ q: filt.q, types: [...filt.types] })); } catch (e) {}
-  if (view === "grid") { clearTimeout(arrangeT); arrangeT = setTimeout(arrange, 150); }
+  try { localStorage.setItem("bthome-filter", JSON.stringify({ q: filt.q, types: [...filt.types], lo: filt.lo, hi: filt.hi })); } catch (e) {}
+  if (view === "grid" && changed) { clearTimeout(arrangeT); arrangeT = setTimeout(arrange, 150); }
   updateStat();
 }
 function renderChips() {
@@ -973,7 +1016,7 @@ fq.addEventListener("keydown", e => { if (e.key === "Enter") fq.blur(); });
 document.getElementById("fclear").addEventListener("click", e => {
   e.preventDefault();
   if (!filterOn()) { document.body.classList.remove("filtering"); syncBar(); if (view === "grid") arrange(); return; } // empty: closes the bar
-  filt.q = ""; fq.value = ""; filt.types.clear(); renderChips(); applyFilter();
+  filt.q = ""; fq.value = ""; filt.types.clear(); filt.lo = R_MIN; filt.hi = R_MAX; syncRssi(); renderChips(); applyFilter();
 });
 document.getElementById("bFilter").onclick = () => {
   const open = document.body.classList.toggle("filtering");
@@ -982,6 +1025,29 @@ document.getElementById("bFilter").onclick = () => {
   if (open && matchMedia("(hover: hover)").matches) fq.focus(); // no keyboard pop-up on phones: chips first
 };
 setInterval(() => { if (document.body.classList.contains("filtering")) renderChips(); }, 1500);
+
+const frlo = document.getElementById("frlo"), frhi = document.getElementById("frhi");
+function syncRssi() {
+  frlo.value = filt.lo; frhi.value = filt.hi;
+  const pct = v => (v - R_MIN) / (R_MAX - R_MIN) * 100, fill = document.getElementById("frfill");
+  fill.style.left = pct(filt.lo) + "%"; fill.style.right = 100 - pct(filt.hi) + "%";
+  document.getElementById("frlab").textContent = !rssiOn() ? "tous"
+    : filt.lo === R_MIN ? `≤ ${filt.hi} dBm` : filt.hi === R_MAX ? `≥ ${filt.lo} dBm` : `${filt.lo} … ${filt.hi} dBm`;
+  document.getElementById("frssi").classList.toggle("on", rssiOn());
+  // when both thumbs meet at the top, the low one must stay grabbable
+  frlo.style.zIndex = filt.lo > R_MAX - 10 ? 2 : 1;
+}
+function onRssi(e) {
+  let lo = +frlo.value, hi = +frhi.value;
+  if (lo > hi) { if (e.target === frlo) lo = hi; else hi = lo; } // thumbs never cross
+  filt.lo = lo; filt.hi = hi;
+  syncRssi(); applyFilter();
+}
+frlo.addEventListener("input", onRssi);
+frhi.addEventListener("input", onRssi);
+syncRssi();
+// mean RSSI drifts: re-evaluate an active RSSI filter every second
+setInterval(() => { if (rssiOn()) applyFilter(); }, 1000);
 setInterval(() => { devices.forEach(d => d.el && renderFoot(d)); if (sheetDev) document.getElementById("shSub").textContent = `${sheetDev.count} paquet${sheetDev.count > 1 ? "s" : ""} · ${sheetDev.rssi} dBm · vu ${ago(sheetDev.seen)}`; }, 1000);
 
 const ANDROID = /Android/i.test(navigator.userAgent);
