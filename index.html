@@ -741,7 +741,7 @@ const sky = (() => {
 })();
 
 /* ======================================================================
-   Bluetooth scanning (Web Bluetooth Scanning API, Chrome Android)
+   Bluetooth scanning (Web Bluetooth Scanning API: Chrome/Edge on Android and Windows)
    ====================================================================== */
 let scanning = false, scanHandle = null, wakeLock = null, total = 0, scanStart = 0, restarting = false;
 const bScan = document.getElementById("bScan");
@@ -765,6 +765,12 @@ async function startScan() {
     showHint(true);
     return;
   }
+  try {
+    if (navigator.bluetooth.getAvailability && !(await navigator.bluetooth.getAvailability())) {
+      toast(ANDROID ? "Bluetooth désactivé : active-le, puis réessaie." : "Aucun Bluetooth disponible : active-le dans les paramètres Windows, puis réessaie.");
+      return;
+    }
+  } catch (e) {}
   navigator.bluetooth.removeEventListener("advertisementreceived", onAdv);
   navigator.bluetooth.addEventListener("advertisementreceived", onAdv);
   scanning = true; setScanUI();
@@ -825,13 +831,17 @@ function updateStat() {
 }
 setInterval(() => { devices.forEach(d => d.el && renderFoot(d)); if (sheetDev) document.getElementById("shSub").textContent = `${sheetDev.count} paquet${sheetDev.count > 1 ? "s" : ""} · ${sheetDev.rssi} dBm · vu ${ago(sheetDev.seen)}`; }, 1000);
 
+const ANDROID = /Android/i.test(navigator.userAgent);
 function showHint(force) {
   const ok = navigator.bluetooth && navigator.bluetooth.requestLEScan;
   const h = document.getElementById("hint");
   if (ok && !force) { h.innerHTML = ""; return; }
   h.innerHTML = !window.isSecureContext
     ? `<span class="warn">Cette page doit être servie en HTTPS (ou déclarée sûre dans <code>chrome://flags/#unsafely-treat-insecure-origin-as-secure</code>).</span>`
-    : `<span class="warn">Chrome Android : active <code>chrome://flags/#enable-experimental-web-platform-features</code>, relance Chrome, puis active Bluetooth et la localisation.</span>`;
+    : !navigator.bluetooth
+    ? `<span class="warn">Ce navigateur n'a pas Web Bluetooth : ouvre la page dans Chrome (Android ou Windows) ou Edge.</span>`
+    : `<span class="warn">Active <code>chrome://flags/#enable-experimental-web-platform-features</code>, relance le navigateur, puis ${
+        ANDROID ? "active Bluetooth et la localisation" : "vérifie que le Bluetooth de l'ordinateur est activé"}.</span>`;
 }
 showHint(false);
 
