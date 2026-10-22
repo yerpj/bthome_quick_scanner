@@ -117,6 +117,25 @@ header {
 .dev.min .orb { display: block; }
 .dev.min .ic { width: 24px; height: 24px; }
 
+/* list view: one row per device, sorted by first sighting, scrolls vertically */
+body.list #field { overflow-y: auto; touch-action: pan-y; display: flex; flex-direction: column; gap: 8px;
+  padding: calc(env(safe-area-inset-top, 0px) + 66px) 12px calc(env(safe-area-inset-bottom, 0px) + 16px); }
+body.list .dev, body.list .dev.min { position: relative; transform: none !important; width: auto; height: auto; flex: none;
+  border-radius: 14px; display: flex; flex-wrap: wrap; align-items: center; column-gap: 14px; padding: 8px 12px;
+  animation: none; transition: none; cursor: pointer; touch-action: pan-y; }
+body.list .dev .top, body.list .dev.min .top { flex: 1 1 150px; padding: 0; height: auto; flex-direction: row; gap: 8px; min-width: 0; }
+body.list .dev.min .nm, body.list .dev.min .spark { display: block; }
+body.list .dev.min .foot { display: flex; }
+body.list .dev .orb, body.list .dev .mini { display: none !important; }
+body.list .dev .vals, body.list .dev.min .vals { display: flex; flex-wrap: wrap; gap: 2px 18px; padding: 0; flex: 3 1 220px; min-width: 0; }
+body.list .dev .v .n { font-size: 17px; }
+body.list .dev canvas.spark { width: 110px; height: 28px; flex: none; }
+body.list .dev .foot, body.list .dev.min .foot { padding: 0; flex: none; min-width: 150px; }
+@media (max-width: 560px) {
+  body.list .dev canvas.spark { display: none; }
+  body.list .dev .foot { min-width: 0; }
+}
+
 /* ---------- empty state ---------- */
 #empty {
   position: fixed; inset: 0; z-index: 4; display: grid; place-items: center; pointer-events: none;
@@ -186,9 +205,7 @@ header {
     </svg>
     <div><b>Radar BTHome</b><small id="stat">à l'arrêt</small></div>
   </div>
-  <button class="btn" id="bArrange" title="Ranger les appareils">
-    <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6" rx="1.5"/><rect x="9" y="1" width="6" height="6" rx="1.5"/><rect x="1" y="9" width="6" height="6" rx="1.5"/><rect x="9" y="9" width="6" height="6" rx="1.5"/></svg>
-  </button>
+  <button class="btn" id="bArrange" title="Ranger en grille"></button>
   <button class="btn primary" id="bScan"><span class="dot"></span><span>Écouter</span></button>
 </header>
 
@@ -453,9 +470,10 @@ function spawn(d) {
   el.className = "dev";
   el.style.setProperty("--c", d.color);
   el.innerHTML = `<div class="top"><div class="ic"></div><div class="orb"></div><div class="nm"></div>
-    <button class="mini" aria-label="Réduire"><svg width="16" height="16" viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"><path d="M3 8h10"/></svg></button></div>
+    <button class="mini" aria-label="Réduire" title="Réduire (toucher la bulle pour la rouvrir)"><svg width="16" height="16" viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"><path d="M3 8h10"/></svg></button></div>
     <div class="vals"></div><canvas class="spark"></canvas><div class="foot"></div>`;
   d.el = el;
+  el.style.order = devices.size;
   const L = layout[d.id];
   d.min = L ? !!L.min : false;
   el.classList.toggle("min", d.min);
@@ -518,13 +536,15 @@ function hookDrag(d) {
   let sx, sy, ox, oy, moved, pid = null, vx = 0, vy = 0, lt = 0, lx = 0, ly = 0;
   el.addEventListener("pointerdown", e => {
     if (e.target.closest(".mini")) return;
+    if (pid !== null) return;
     pid = e.pointerId; el.setPointerCapture(pid);
     sx = e.clientX; sy = e.clientY; ox = d.x; oy = d.y; moved = false;
     lt = performance.now(); lx = sx; ly = sy; vx = vy = 0;
-    field.appendChild(el); // bring to front
+    if (view !== "list") field.appendChild(el); // bring to front
   });
   el.addEventListener("pointermove", e => {
     if (e.pointerId !== pid) return;
+    if (view === "list") { if (Math.hypot(e.clientX - sx, e.clientY - sy) >= 6) moved = true; return; }
     const dx = e.clientX - sx, dy = e.clientY - sy;
     if (!moved && Math.hypot(dx, dy) < 6) return;
     if (!moved) { moved = true; el.classList.add("drag"); }
@@ -536,7 +556,9 @@ function hookDrag(d) {
   const end = e => {
     if (e.pointerId !== pid) return;
     pid = null; el.classList.remove("drag");
-    if (!moved) { openSheet(d); return; }
+    if (e.type === "pointercancel" || view === "list" && moved) return; // the list scrolled
+    if (!moved) { if (d.min && view !== "list") toggleMin(d); else openSheet(d); return; }
+    if (view === "grid") setView("free");
     // a little inertia
     let f = 0; const step = () => {
       vx *= .9; vy *= .9; if (Math.hypot(vx, vy) < .02 || ++f > 40) { layout[d.id] = { x: d.x, y: d.y, min: d.min }; saveLayout(); return; }
@@ -561,7 +583,10 @@ function emptyVals(d) {
   if (ev.length) { const e = ev[ev.length - 1]; return box(e.text, e.label + " · " + ago(d.lastEvent || d.seen)); }
   return box("—", "données");
 }
-function displayName(d) { return d.name || "BTHome " + d.id.slice(0, 4).toUpperCase(); }
+function displayName(d) { return d.name || shortId(d.id); }
+// Web Bluetooth hides the BLE address: the page only gets an opaque, stable per-site identifier
+function shortId(id) { const h = Array.from(atobSafe(id), c => c.charCodeAt(0).toString(16).padStart(2, "0").toUpperCase()); return h.length >= 4 ? "ID " + h.slice(0, 4).join("") : id; }
+function atobSafe(s) { try { return atob(s); } catch (e) { return ""; } }
 
 function render(d, live) {
   const el = d.el;
@@ -663,7 +688,7 @@ function renderSheet() {
     const val = v.text != null ? v.text || "—" : fmtNum(v.value, v.unit);
     return `<div class="tile"><div class="row"><span class="l">${v.label}</span><span class="n">${val}${v.unit && v.text == null ? `<u>${v.unit}</u>` : ""}</span></div>${mm}${v.kind === "n" && h.length > 1 ? `<canvas data-k="${v.key}"></canvas>` : ""}</div>`;
   }).join("");
-  const meta = [["Identifiant", d.id], ["Format", "BTHome v" + d.version + (d.encrypted ? " (chiffré)" : "")],
+  const meta = [["Identifiant", d.id + " (anonyme : le navigateur masque l'adresse BLE)"], ["Format", "BTHome v" + d.version + (d.encrypted ? " (chiffré)" : "")],
     ["Premier vu", new Date(d.first).toLocaleTimeString("fr-CH")], ["Doublons", d.dupes]];
   if (d.meta.fw != null) meta.push(["Firmware", d.meta.fw]);
   if (d.meta.devtype != null) meta.push(["Type", d.meta.devtype]);
@@ -734,8 +759,9 @@ const sky = (() => {
   return {
     pulse(d) {
       if (reduce || !d.el) return;
-      const w = d.el.offsetWidth, h = d.el.offsetHeight;
-      waves.push({ x: d.x + w / 2, y: d.y + h / 2, c: d.color, t0: performance.now() });
+      const r = d.el.getBoundingClientRect();
+      if (r.bottom < 0 || r.top > innerHeight) return;
+      waves.push({ x: r.left + r.width / 2, y: r.top + r.height / 2, c: d.color, t0: performance.now() });
     },
   };
 })();
@@ -752,7 +778,8 @@ function onAdv(ev) {
     const dv = ev.serviceData && ev.serviceData.get(u);
     if (!dv) continue;
     total++;
-    ingest({ id: ev.device.id, name: ev.device.name || ev.name, rssi: ev.rssi ?? 0, uuid: n, bytes: new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength) });
+    // advertised local name only: device.name can be a stale OS cache
+    ingest({ id: ev.device.id, name: ev.name, rssi: ev.rssi ?? 0, uuid: n, bytes: new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength) });
   }
 }
 
@@ -850,7 +877,24 @@ function toast(msg) {
   const t = document.getElementById("toast"); t.textContent = msg; t.classList.add("show");
   clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("show"), 3800);
 }
-document.getElementById("bArrange").onclick = arrange;
+const ICON_GRID = '<svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6" rx="1.5"/><rect x="9" y="1" width="6" height="6" rx="1.5"/><rect x="1" y="9" width="6" height="6" rx="1.5"/><rect x="9" y="9" width="6" height="6" rx="1.5"/></svg>';
+const ICON_LIST = '<svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="2" width="14" height="3" rx="1.2"/><rect x="1" y="6.5" width="14" height="3" rx="1.2"/><rect x="1" y="11" width="14" height="3" rx="1.2"/></svg>';
+// view: "free" (cards where the user put them), "grid" (just arranged), "list"
+let view = "free";
+function setView(v) {
+  view = v;
+  document.body.classList.toggle("list", v === "list");
+  const b = document.getElementById("bArrange");
+  b.innerHTML = v === "grid" ? ICON_LIST : ICON_GRID;
+  b.title = v === "grid" ? "Afficher en liste" : "Ranger en grille";
+  try { localStorage.setItem("bthome-view", v === "list" ? "list" : "free"); } catch (e) {}
+  if (v === "grid") requestAnimationFrame(arrange);
+  devices.forEach(d => d.el && render(d, false)); // sparklines follow the new width
+}
+document.getElementById("bArrange").onclick = () => setView(view === "grid" ? "list" : "grid");
+let savedView = "free";
+try { savedView = localStorage.getItem("bthome-view") || "free"; } catch (e) {}
+setView(savedView === "list" ? "list" : "free");
 
 </script>
 </body>
