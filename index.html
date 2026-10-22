@@ -298,6 +298,7 @@ def(0x14, "moisture", "Humidité sol", "%", .01, 2, 0);
 def(0x2e, "humidity", "Humidité", "%", 1, 1, 0);
 def(0x2f, "moisture", "Humidité sol", "%", 1, 1, 0);
 def(0x3a, "button", "Bouton", "", 1, 1, 0, "e");
+def(0x3b, "command", "Commande", "", 1, -2, 0, "c"); // length byte (low 5 bits = argument bytes), opcode, arguments
 def(0x3c, "dimmer", "Variateur", "", 1, 2, 0, "d");
 def(0x3d, "count", "Compteur", "", 1, 2, 0);
 def(0x3e, "count", "Compteur", "", 1, 4, 0);
@@ -336,9 +337,14 @@ def(0x5e, "direction", "Direction", "°", .01, 2, 0);
 def(0x5f, "precipitation", "Précipitations", "mm", .1, 2, 0);
 def(0x60, "channel", "Canal", "", 1, 1, 0);
 def(0x61, "rpm", "Rotation", "tr/min", 1, 2, 0);
+def(0x62, "speed", "Vitesse", "m/s", .000001, 4, 1);
+def(0x63, "accel", "Accélération", "m/s²", .000001, 4, 1);
+def(0x64, "lightlevel", "Niveau de lumière", "", 1, 1, 0, "b");
+O[0x64].names = ["sombre", "crépuscule", "lumineux"];
+def(0x65, "settings", "Révision des réglages", "", 1, 1, 0, "x"); // tells receivers the data changed: not a sensor, ignored
 def(0xf0, "devtype", "Type d'appareil", "", 1, 2, 0, "m");
-def(0xf1, "fw", "Firmware", "", 1, 4, 0, "m");
-def(0xf2, "fw", "Firmware", "", 1, 3, 0, "m");
+def(0xf1, "fw", "Firmware", "", 1, 4, 0, "v");
+def(0xf2, "fw", "Firmware", "", 1, 3, 0, "v");
 // binary sensors: [label, when 0, when 1]
 const BIN = {
   0x0f: ["État", "non", "oui"], 0x10: ["Alimentation", "coupée", "allumée"], 0x11: ["Ouverture", "fermé", "ouvert"],
@@ -370,7 +376,7 @@ function decode(uuid, bytes) {
   const out = { version: 0, encrypted: false, trigger: false, values: [], error: null };
   const push = (o, value, idx) => {
     const v = { id: o.id, key: o.key + (idx > 1 ? "_" + idx : ""), label: o.label + (idx > 1 ? " " + idx : ""), unit: o.unit, kind: o.kind, value };
-    if (o.kind === "b") v.text = value ? o.on : o.off;
+    if (o.kind === "b") v.text = o.names ? o.names[value] ?? String(value) : value ? o.on : o.off;
     if (o.kind === "e") v.text = BUTTON[value] ?? "événement " + value;
     out.values.push(v);
   };
@@ -386,9 +392,18 @@ function decode(uuid, bytes) {
       const id = bytes[i++], o = O[id];
       if (!o) { out.error = "objet 0x" + id.toString(16).padStart(2, "0") + " inconnu, reste ignoré"; break; }
       let n = o.bytes;
-      if (n < 0) n = bytes[i++];
+      if (n === -1) n = bytes[i++];              // text, raw: length byte
+      else if (n === -2) n = 2 + (bytes[i] & 31); // command: length byte + opcode + arguments
       if (i + n > bytes.length) { out.error = "paquet tronqué"; break; }
-      if (o.kind === "s") push(o, new TextDecoder().decode(bytes.slice(i, i + n)), nth(o.key));
+      if (o.kind === "x") { /* ignored on purpose */ }
+      else if (o.kind === "v") out.values.push({ id, key: "fw", label: "Firmware", unit: "", kind: "m",
+        value: Array.from(bytes.slice(i, i + n)).reverse().join(".") }); // F100010204 -> 4.2.1.0
+      else if (o.kind === "c") {
+        const op = bytes[i + 1], arg = bytes.slice(i + 2, i + n), a0 = arg.length ? readInt(arg, 0, arg.length, 0) : 0;
+        const text = ["éteindre", "allumer", "basculer", `monter de ${a0} pas`, `descendre de ${a0} pas`][op] ?? `commande 0x${op.toString(16).padStart(2, "0")}${arg.length ? " " + hex(arg) : ""}`;
+        out.values.push({ id, key: "command" + (nth("command") > 1 ? "_" + seen.command : ""), label: "Commande", unit: "", kind: "e", value: op, text });
+      }
+      else if (o.kind === "s") push(o, new TextDecoder().decode(bytes.slice(i, i + n)), nth(o.key));
       else if (o.kind === "r") push(o, hex(bytes.slice(i, i + n)), nth(o.key));
       else if (o.kind === "d") {
         const ev = bytes[i], steps = bytes[i + 1];
@@ -730,6 +745,7 @@ function renderSheet() {
     ["Premier vu", new Date(d.first).toLocaleTimeString("fr-CH")], ["Doublons", d.dupes]];
   if (d.meta.fw != null) meta.push(["Firmware", d.meta.fw]);
   if (d.meta.devtype != null) meta.push(["Type", d.meta.devtype]);
+  if (d.meta.timestamp != null) meta.push(["Horodatage", new Date(d.meta.timestamp * 1000).toLocaleString("fr-CH")]);
   if (d.meta.pid != null) meta.push(["N° paquet", d.meta.pid]);
   const log = d.log.slice(0, 120).map(l =>
     `<div><b>${new Date(l.t).toLocaleTimeString("fr-CH")}</b> ${l.enc ? "🔒 " : ""}<em>${l.txt || l.err || "—"}</em>${l.err && l.txt ? " · " + l.err : ""}<br>&nbsp;&nbsp;${l.raw} · ${l.rssi} dBm</div>`).join("");
