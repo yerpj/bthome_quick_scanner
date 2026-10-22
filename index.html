@@ -565,16 +565,19 @@ function arrange() {
   }
 }
 
+let zTop = 1;
 function hookDrag(d) {
   const el = d.el;
   let sx, sy, ox, oy, moved, pid = null, vx = 0, vy = 0, lt = 0, lx = 0, ly = 0;
   el.addEventListener("pointerdown", e => {
     if (e.target.closest(".mini")) return;
-    if (pid !== null) return;
-    pid = e.pointerId; el.setPointerCapture(pid);
+    // a new press always takes over: a lost pointerup must never leave the tile deaf
+    pid = e.pointerId;
+    try { el.setPointerCapture(pid); } catch (err) {}
     sx = e.clientX; sy = e.clientY; ox = d.x; oy = d.y; moved = false;
     lt = performance.now(); lx = sx; ly = sy; vx = vy = 0;
-    if (view !== "list") field.appendChild(el); // bring to front
+    // bring to front with z-index: moving the node in the DOM would drop the pointer capture
+    if (view !== "list") el.style.zIndex = ++zTop;
   });
   el.addEventListener("pointermove", e => {
     if (e.pointerId !== pid) return;
@@ -602,6 +605,7 @@ function hookDrag(d) {
   };
   el.addEventListener("pointerup", end);
   el.addEventListener("pointercancel", end);
+  el.addEventListener("lostpointercapture", e => { if (e.pointerId === pid) { pid = null; el.classList.remove("drag"); } });
 }
 
 function mainKeys(d) {
