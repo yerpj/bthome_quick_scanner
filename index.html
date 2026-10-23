@@ -952,8 +952,9 @@ const filt = { q: "", types: new Set(), lo: R_MIN, hi: R_MAX };
 try {
   const f = JSON.parse(localStorage.getItem("bthome-filter") || "{}");
   filt.q = f.q || ""; filt.types = new Set(f.types || []);
-  if (Number.isFinite(f.lo)) filt.lo = f.lo;
-  if (Number.isFinite(f.hi)) filt.hi = f.hi;
+  // ranges saved before the -120 … +20 widening would read as an active filter: drop them
+  if (f.rv === 2 && Number.isFinite(f.lo)) filt.lo = f.lo;
+  if (f.rv === 2 && Number.isFinite(f.hi)) filt.hi = f.hi;
 } catch (e) {}
 const rssiOn = () => filt.lo > R_MIN || filt.hi < R_MAX;
 const filterOn = () => !!(filt.q.trim() || filt.types.size || rssiOn());
@@ -986,7 +987,7 @@ function applyFilter() {
   bf.classList.toggle("active", on);
   badge.hidden = !on; badge.textContent = shown;
   document.getElementById("fcnt").textContent = devices.size ? `${shown} / ${devices.size}` : "";
-  try { localStorage.setItem("bthome-filter", JSON.stringify({ q: filt.q, types: [...filt.types], lo: filt.lo, hi: filt.hi })); } catch (e) {}
+  try { localStorage.setItem("bthome-filter", JSON.stringify({ q: filt.q, types: [...filt.types], rv: 2, lo: filt.lo, hi: filt.hi })); } catch (e) {}
   if (view === "grid" && changed) { clearTimeout(arrangeT); arrangeT = setTimeout(arrange, 150); }
   updateStat();
 }
