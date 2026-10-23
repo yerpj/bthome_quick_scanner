@@ -264,8 +264,8 @@ body.filtering #fbar { transform: none; opacity: 1; pointer-events: auto; }
     <span class="lab">RSSI moyen <b id="frlab"></b></span>
     <div class="dual">
       <div class="track"><div class="fill" id="frfill"></div></div>
-      <input type="range" id="frlo" min="-100" max="-30" step="1" aria-label="RSSI moyen minimum">
-      <input type="range" id="frhi" min="-100" max="-30" step="1" aria-label="RSSI moyen maximum">
+      <input type="range" id="frlo" min="-120" max="20" step="1" aria-label="RSSI moyen minimum">
+      <input type="range" id="frhi" min="-120" max="20" step="1" aria-label="RSSI moyen maximum">
     </div>
   </div>
 </div>
@@ -947,7 +947,7 @@ function updateStat() {
 const norm = t => String(t).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 const KIND_WORDS = { temperature: "temperature climat", power: "energie electricite prise", button: "bouton telecommande",
   door: "porte fenetre ouverture", motion: "mouvement presence", air: "air co2 qualite", light: "lumiere", lock: "serrure", generic: "" };
-const R_MIN = -100, R_MAX = -30;
+const R_MIN = -120, R_MAX = 20;
 const filt = { q: "", types: new Set(), lo: R_MIN, hi: R_MAX };
 try {
   const f = JSON.parse(localStorage.getItem("bthome-filter") || "{}");
